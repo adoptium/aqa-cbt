@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null 2>&1 && pwd)"
+NEW_TAG=$1
+OLD_TAG=$2
+RELNAME=$3
+KEEP_DIR=$4
+ 
+if [ "$KEEP_DIR" == "none" ]; then
+DIFFS=$(mktemp)
+else
+DIFFS=$KEEP_DIR/diff-$RELNAME-$NEW_TAG-$OLD_TAG
+fi
+git pull -q
+git diff --name-only $OLD_TAG...$NEW_TAG > $DIFFS
+ 
+TO_BE_TESTED=""
+function shouldBeTested () { 
+    search=$1 
+    totest=$2 
+    if [ "$totest" == "" ]; then
+        totest=$(basename ${search})
+    fi
+    CLEAN=$(mktemp)
+    grep -v "test/jdk/" $DIFFS | grep -v "jdk/test/" > $CLEAN
+    if grep -q $search $CLEAN; then
+       # echo $NEW_TAG should be tested for $search"
+        TO_BE_TESTED+="$totest "
+    fi
+}
+
+shouldBeTested  awt  
+shouldBeTested  swing
+shouldBeTested  java2d  awt 
+shouldBeTested  "javax/sound"
+shouldBeTested  "javax/print"
+ 
+TO_BE_TESTED=$(echo "$TO_BE_TESTED" | xargs -n 1 | sort | uniq | xargs -n1 | tr "\n" " ")
+TO_BE_TESTED=$(echo "$TO_BE_TESTED" | xargs)
+if [ "$TO_BE_TESTED" == "" ];then
+    printf "For %s release %s (no changes) from %s\n" $RELNAME "$NEW_TAG" "$OLD_TAG"
+else
+    printf "For %s release %s changes (%s) from %s\n"  "$RELNAME" "$NEW_TAG" "$TO_BE_TESTED" "$OLD_TAG"
+fi

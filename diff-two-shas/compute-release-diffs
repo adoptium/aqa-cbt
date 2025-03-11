@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+SCRIPTDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" > /dev/null 2>&1 && pwd)"
+
+OS=$(uname -a)
+case "$OS" in
+*Darwin*) TAC="tail -r" ;; 
+*Linux*) TAC="tac" ;;
+esac 
+
+# pass as parameter or default jdk8u
+JDK="${1:-jdk8u}"   
+
+cd $SCRIPTDIR/tmp/$JDK 
+TAGS=$SCRIPTDIR/tags/$JDK
+mkdir -p $TAGS 
+RELEASES=$TAGS/tags
+if [ -f $RELEASES ]; then 
+   echo "Using Tags in $RELEASES"
+else
+    echo "You need to manually create $RELEASES"
+    echo "Run the following" 
+    echo 'git tag | grep "\-ga$" | grep -v "dryrun" | $TAC > $RELEASES'
+    exit 
+fi
+rm -rf $TAGS/summary 
+touch $TAGS/summary 
+NEW_TAG="first"
+while IFS= read -r TAGLINE; do 
+    TAGLINE+=" norel" 
+    TAG=$(echo $TAGLINE | cut -d ' ' -f 1)
+    RELNAME=$(echo $TAGLINE | cut -d ' ' -f 2)
+    if [ $RELNAME == "norel" ];then
+        RELNAME="" 
+    fi 
+    if [ "$NEW_TAG" == "first" ]; then
+        NEW_TAG=$TAG
+        NEW_TAG_REL=$RELNAME
+        OLD_TAG=$TAG
+        OLD_TAG_REL=$RELNAME
+        KEEP_DIR=$TAGS
+    else 
+        NEW_TAG=$OLD_TAG
+        NEW_TAG_REL=$OLD_TAG_REL
+        OLD_TAG=$TAG 
+        OLD_TAG_REL=$RELNAME 
+        bash $SCRIPTDIR/diff2 $NEW_TAG $OLD_TAG $NEW_TAG_REL $KEEP_DIR  >>$TAGS/summary 
+        KEEP_DIR="none"
+    fi
+done < $RELEASES
+
+echo
+echo "Summary for $JDK in $TAGS/summary"
+cat $TAGS/summary
+echo "File diff for latest release in $(ls $TAGS/diff*)"
